@@ -7,3 +7,5 @@
 *.pipe
 *.DS_Store
 *.safetensors
+
+.idea

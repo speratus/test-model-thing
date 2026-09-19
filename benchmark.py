@@ -1,7 +1,6 @@
-import mlx.core as mx
-import mlx.nn as nn
-import mlx.optimizers as opt
-import mlx.utils as util
+import torch
+import torch.nn as nn
+import torch.optim as opt
 
 from main import Model
 
@@ -10,7 +9,8 @@ class Classification(nn.Module):
         super().__init__()
         self.proj = nn.Linear(dim, 2)
 
-    def __call__(self, x: mx.array): return self.proj(x)
+    def forward(self, x: torch.Tensor):
+        return self.proj(x)
 
 def cola(filepath: str):
     data = []
@@ -33,12 +33,13 @@ def mcc(tp, tn, fp, fn):
     return score * 100
 
 def run(path: str):
-    model = Model(dim = 512, layers = 16, temp = 0.75, lr = 5e-4)
+    device = torch.device("cuda" if torch.cuda.is_available() else "mps" if torch.backends.mps.is_available() else "cpu")
+    model = Model(dim = 512, layers = 16, temp = 0.75, lr = 5e-4, device = device)
     model.load(path)
     model.freeze()
 
-    head = Classification(model.dim)
-    headopt = opt.AdamW(learning_rate = 1e-3)
+    head = Classification(model.dim).to(device)
+    headopt = opt.AdamW(head.parameters(), lr = 1e-3)
 
     data = cola('CoLA/original/raw/in_domain_train.tsv')
 
@@ -46,39 +47,37 @@ def run(path: str):
         print('invalid CoLA dataset.')
         return
 
-    def lossfn(params, state: mx.array, target: int):
-        head.update(params)
-        choice = head(state)
-
-        loss = nn.losses.cross_entropy(choice[None, :], mx.array([target])).mean()
-        return loss, choice
+    criterion = nn.CrossEntropyLoss()
 
     for epoch in range(3):
         print(f'\nEpoch {epoch + 1}')
 
-        dummies = [mx.zeros((model.dim, )) for _ in range(model.layercount)]
+        dummies = [torch.zeros((model.dim, ), device = device) for _ in range(model.layercount)]
         tp, tn, fp, fn = 0, 0, 0, 0
         
         for i, (b_s, label) in enumerate(data):
             model.reset()
 
             final = None
-            for b in b_s:
-                enc = model.encoder(mx.array(b))
-                x = enc
+            with torch.no_grad():
+                for b in b_s:
+                    enc = model.encoder(torch.tensor(b, device = device, dtype = torch.long))
+                    x = enc
 
-                for j, layer in enumerate(model.layers):
-                    x, state, _ = layer(enc, x, dummies[j])
-                    layer.states = mx.stop_gradient(state)
+                    for j, layer in enumerate(model.layers):
+                        x, state, _ = layer(enc, x, dummies[j])
+                        layer.states.copy_(state)
 
-                final = model.layers[-1].states
+                    final = model.layers[-1].states
 
-            (_, choice), grads = mx.value_and_grad(lossfn, argnums = 0)(head.trainable_parameters(), final, label)
+            headopt.zero_grad()
+            choice = head(final)
+            target = torch.tensor([label], device = device, dtype = torch.long)
+            loss = criterion(choice.unsqueeze(0), target)
+            loss.backward()
+            headopt.step()
 
-            headopt.update(head, grads)
-            mx.eval(head.parameters(), headopt.state)
-
-            predicted_class = mx.argmax(choice).item()
+            predicted_class = torch.argmax(choice).item()
             if predicted_class == 1 and label == 1: tp += 1
             elif predicted_class == 0 and label == 0: tn += 1
             elif predicted_class == 1 and label == 0: fp += 1

@@ -9,7 +9,7 @@ This is a small proof-of-concept language model (not an LLM) that incorporates t
 * Continuous data streaming
 * Test-time training
 
-The model is built with MLX, so it should run fine on all Apple Silicon devices. MLX on Linux has not been tested, but feel free to try it.
+The model is built with PyTorch, so it runs seamlessly on NVIDIA GPUs (CUDA), Apple Silicon (MPS), and CPUs.
 
 Being a proof of concept I have only trained a 4.5-million parameter model (keep in mind, GPT-1 was ~117m) for about 12 hours, but there are very promising results. The model tends to misspell characters (since it outputs byte-by-byte, rather than token-by-token) but it is able to close quotes/brackets and such. Given further training and scaling up the hyperparameters this could become much more powerful. My dataset is also tiny (only a few hundred MB), so there's a lot more world knowledge that can be fed into the model.
 
@@ -21,9 +21,35 @@ Feel free to fork the training and benchmark code (everything is under MIT). I r
 
 ## Training your own model
 
-Model weights (in ```.safetensors```) are not provided because GitHub doesn't like very large files. But, you can train your own model simply by initializing a ```venv``` and installing ```mlx```, no other libraries needed, then running ```main.py```. When you run it, you will be prompted with the mode, ```train``` being train on dataset and ```chat``` being chat. There is also ```chatreadonly``` for readonly chat (the model weights will not re-save to disk and override things) and ```chatnotrace``` if you want to break things. You will have to configure your own dataset by modifying the code (to run dataset mode), but you should be able to run chat mode without modifying anything if you have weights already.
+Model weights (in ```.safetensors```) are not provided because GitHub doesn't like very large files. But, you can train your own model simply by initializing a ```venv``` and installing dependencies:
+
+```bash
+pip install -r requirements.txt
+```
+
+Then run ```main.py```:
+
+```bash
+python main.py
+```
+
+When you run it, you will be prompted with the mode, ```train``` being train on dataset and ```chat``` being chat. There is also ```chatreadonly``` for readonly chat (the model weights will not re-save to disk and override things) and ```chatnotrace``` if you want to break things. You will have to configure your own dataset by modifying the code (to run dataset mode), but you should be able to run chat mode without modifying anything if you have weights already.
 
 Once it begins training, you can safely ^C the program and it will save weights. It should also periodically save weights if I'm not mistaken. The saved weights include the internal memory so the model will remember that the next time it runs. You can launch into chat mode and the memory should carry on from whatever it was learning in training.
+
+## Running benchmarks & tests
+
+To run the unit test validation suite:
+
+```bash
+python test_model.py
+```
+
+To run the CoLA evaluation probe:
+
+```bash
+python benchmark.py
+```
 
 ## How it works
 
