@@ -225,6 +225,11 @@ class Model(nn.Module):
 class Runtime:
     def __init__(self, path: str, threshold: float, **kwargs):
         self.model = Model(**kwargs)
+        device = torch.accelerator.current_accelerator().type if torch.cuda.is_available() else 'cpu'
+        self.device = device
+
+        self.model.to(device)
+
         self.path = path
         self.threshold = threshold
 
@@ -269,7 +274,7 @@ class Runtime:
 
     def dataset(self):
         import glob, itertools
-        files = glob.glob('wikipedia_clean/**/wiki_*', recursive = True)
+        files = ['cleaned_merged_fairy_tales_without_eos.txt']
 
         while True:
             for file in files:
